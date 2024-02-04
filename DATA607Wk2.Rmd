@@ -1,0 +1,123 @@
+---
+title: "Assignment – SQL and R"
+author: "ZIXIAN LIANG"
+date: "2024-02-04"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+Introduction
+
+I provided a list of 6 movies to 5 friends to investigate which ones they recognize and have watched, and to rate movives accordingly. The purpose of this survey is to explore the following questions:
+
+Which movie is recognized by the most friends?
+Which friend watches movies most frequently?
+Which friend watches movies the least?
+Which movie receives the highest total rating?
+Which movie receives the highest rating from each active reviewer / the highest average rating?
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Establish connection with MySQL
+
+```{r echo=FALSE}
+library(RMySQL)
+library(DBI)
+library(ggplot2)
+con <- dbConnect(MySQL(), 
+                 user = "root", 
+                 password = "", 
+                 dbname = "movie", 
+                 host = "localhost")
+
+```
+
+Load the dataset
+
+```{r}
+data <- dbGetQuery(con, "SELECT * FROM movies")
+data
+```
+First, I checked data to find out which movie is the most widely recognized.
+
+```{r}
+library(dplyr)
+
+counts <- data %>%
+  group_by(movie_name) %>%
+  summarize(Never_Seen = sum(is.na(rating)),
+            Seen = sum(!is.na(rating))) %>%
+arrange(desc(Seen))
+
+counts
+
+```
+
+```{r}
+ggplot(counts, aes(x = reorder(movie_name, -Seen), y = Seen)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Count of Non-NA Ratings by Movie", x = "Movie Name", y = "Seen") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+Next, I want to check which of my friends has watched the most movies and which has watched the least.
+
+```{r}
+Reviewer_counts <- data %>%
+  group_by(reviewer) %>%
+  summarize(Never_Seen = sum(is.na(rating)),
+            Seen = sum(!is.na(rating))) %>%
+arrange(desc(Seen))
+
+Reviewer_counts
+```
+
+```{r}
+
+data_long <- tidyr::pivot_longer(Reviewer_counts, cols = c(Seen, Never_Seen ), names_to = "status", values_to = "count")
+
+ggplot(data_long, aes(x = reviewer, y = count, fill = status)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Count of Never Seen and Seen by Reviewer", x = "Reviewer", y = "Count") +
+  scale_fill_manual(values = c("Never_Seen" = "skyblue", "Seen" = "salmon")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Then, let's see which movie has the highest rating.
+
+```{r}
+total_rating <- data %>%
+  filter(!is.na(rating)) %>%
+  group_by(movie_name) %>%
+    summarize(total_score = sum(rating, na.rm = TRUE)) %>%
+  arrange(desc(total_score))
+total_rating
+```
+```{r}
+ggplot(total_rating, aes(x = movie_name, y = total_score, fill = movie_name)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Total Rating by Movie", x = "Movie Name", y = "Total Score") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Finally, let's see which movie receives the highest individual rating.
+
+```{r}
+average_ratings <- data %>%
+  group_by(movie_name) %>%
+summarize(average_rating = sum(rating, na.rm = TRUE) / sum(!is.na(rating)),
+            non_na_count = sum(!is.na(rating))) %>%
+  arrange(desc(average_rating))
+average_ratings
+```
+```{r}
+ggplot(average_ratings, aes(x = movie_name, y = average_rating)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Average Rating by Active Viewers", x = "Movie Name", y = "Average Rating") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+Conclusion,
+
+Among my friends, Adrian has watched the most movies and has seen every movie on the list; Emma watches the fewest movies, having only seen two. The most widely recognized movie is "Fast and Furious 10," by its Series of ten movies, resulting in the highest total score. However, this doesn't mean it's the best movie. Upon calculation, "Oppenheimer" has the highest average rating by active reviewers, making it the truly best recent popular movie.
